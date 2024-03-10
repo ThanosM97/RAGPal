@@ -57,6 +57,11 @@ function postMessage() {
 
                     if (result.done) { //Last chunk has arrived, add the span
                         $('#chat-messages').find('div:last').append('<span class="from-label">RAGPal</span>')
+                        $('#user-input').prop('disabled', false); // Enable input field
+
+                        // Scroll to the last message
+                        $('html, body').animate({ scrollTop: $(document).height() }, 'slow');
+
                         return;
                     }
 
