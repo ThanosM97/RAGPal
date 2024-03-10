@@ -33,18 +33,40 @@ function postMessage() {
         $('#user-input').val(''); // Clear input field
         $('#user-input').css('height', ''); // Reset height to default
         $('#user-input').prop('disabled', true); // Disable input field
-        $('#chat-messages').append('<div class="message bot-message">Generating...<span class="from-label">RAGPal</span></div>'); // Add bot message placeholder
+        $('#chat-messages').append('<div class="message bot-message">...<span class="from-label">RAGPal</span></div>'); // Add bot message placeholder
 
-        // Send post request to /send_message endpoint
-        $.post('/send_message', { "user-input": userInput }, function (response) {
-            // Add response to the placeholder
-            $('#chat-messages').find('div:last').html(response.bot_response + '<span class="from-label">RAGPal</span></div>')
-            $('#user-input').prop('disabled', false); // Enable the input field
+        fetch('/send_message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'user-input=' + encodeURIComponent(userInput) //for special characters in user's input,
+        })
+            .then(response => {
+                const reader = response.body.getReader();
+                let decoder = new TextDecoder();
 
-            // Scroll to the last message
-            $('html, body').animate({ scrollTop: $(document).height() }, 'slow');
-        });
+                $('#chat-messages').find('div:last').empty(); // Remove the ... placeholder
 
+                // Read chunks from the response stream
+                reader.read().then(function processResult(result) {
+                    var responseChunk = decoder.decode(result.value || new Uint8Array, { stream: true });
 
+                    // Append response chunk to the chat div
+                    $('#chat-messages').find('div:last').append(responseChunk)
+
+                    if (result.done) { //Last chunk has arrived, add the span
+                        $('#chat-messages').find('div:last').append('<span class="from-label">RAGPal</span>')
+                        return;
+                    }
+
+                    // Read the next chunk
+                    reader.read().then(processResult);
+                });
+            })
+            .catch(error => {
+                // Handle error
+                console.error('Error:', error);
+            });
     }
 }

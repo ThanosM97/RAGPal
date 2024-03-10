@@ -6,16 +6,26 @@ Endpoints:
                   response based on user's prompt. (methods: POST,
                   request args: `user-input`)
 """
-from flask import Flask, render_template, request, jsonify
+import time
+from typing import Generator
+
+from flask import Flask, Response, render_template, request
 from lorem_text import lorem
 
 app = Flask(__name__)
 messages = []
 
 
-def ask_LLM(prompt: str) -> str:
+def ask_LLM(prompt: str) -> Generator[bytes, None, str]:
     # TODO: Send a request to the selected LLM
     response = lorem.paragraph()
+
+    # Simulate bot response in chunks
+    for sentence in response.split(","):
+        time.sleep(2)  # Simulate delay
+        yield sentence.encode('utf-8')
+
+    messages.append(('bot', response))
     return response
 
 
@@ -31,9 +41,9 @@ def send_message() -> Flask.response_class:
     messages.append(('user', form['user-input']))
 
     response = ask_LLM(form['user-input'])
-    messages.append(('bot', response))
 
-    return jsonify({'bot_response': response})
+    return Response(response, content_type="text/plain",
+                    status=200, direct_passthrough=True)
 
 
 if __name__ == '__main__':
