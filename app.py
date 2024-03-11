@@ -7,12 +7,15 @@ Endpoints:
                   response. (methods: POST, request args: `user-input`)
 
 Functions:
-'ask_LLM' : Makes the request to AzureOpenAI API given an input string
-            `prompt`. The response is a stream, so the function is a
-            Generator that yields chunks of the response as they come.
+'generation' : Makes the request to AzureOpenAI API given an input string
+               `prompt` and a list of `relevant_documents`. The response is
+               a stream, so the function is a Generator that yields chunks
+               of the response as they come.
+'retrieval' : Retrieves and returns relevant documents to the input string
+              argument `prompt`.
 """
 import os
-from typing import Generator
+from typing import Generator, List
 
 from flask import Flask, Response, render_template, request
 from openai import AzureOpenAI
@@ -24,22 +27,71 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
 
 
-def ask_LLM(prompt: str) -> Generator[bytes, None, str]:
+def retrieval(prompt: str) -> List[str]:
+    """Returns relevant documents to `prompt`.
+
+    Args:
+    - prompt (str): User input/prompt.
+
+    Returns:
+        A list of relevant documents.
+    """
+    # TODO: Add retrieval process or return custom text
+    return []
+
+
+def generation(
+    prompt: str,
+    relevant_documents: List[str]
+) -> Generator[bytes, None, str]:
+    """Yields chunks of AzureOpenAI API's streamed response.
+
+    This generator function takes as input a user `prompt` and the retrieved
+    `relevant_documents`. It makes a request to AzureOpenAI's API using
+    formatting and RAG-specific instructions for the generation process,
+    the relevant docuements, and the user prompt. It yields the chunks of
+    the API's response as they come.
+
+    Args:
+    - prompt (str): User input/prompt.
+    - relevant_documents (List): A list of relevant documents to the prompt.
+
+    Yields:
+        Chunks of the response in bytes (utf-8 encoded).
+
+    Returns:
+        The generated response as a string.
+    """
     client = AzureOpenAI(
         api_key=OPENAI_API_KEY,
         azure_endpoint=OPENAI_API_BASE,
         api_version="2023-07-01-preview"
     )
 
-    instruction = "Respond using Markdown if formatting is needed."
+    instruction = "Respond using Markdown if formatting is needed. "
+
+    rag_instructions = (
+        "Do not justify your answers. " +
+        "Forget the information you have outside of context." +
+        "If the answer to the question is not provided in the context, say" +
+        "I don't know the answer to this question." +
+        "Do not mention that context is provided to the user. " +
+        "Based on these instructions, and the relevant context, answer this:")
+
+    documents = "[NEW DOCUMENT]: ".join(relevant_documents)
     message_text = [
         {"role": "system", "content": instruction},
-        {"role": "user", "content": prompt}]
+        {
+            "role": "system",
+            "content": f"Relevant context: {documents}"
+        },
+        {"role": "user", "content": rag_instructions + prompt}]
 
     chat_completion = client.chat.completions.create(
         messages=message_text,
         model="gpt-4-turbo",
-        stream=True
+        stream=True,
+        temperature=0.7  # Makes the model more focused and deterministic
     )
 
     response = []
@@ -64,10 +116,11 @@ def home() -> str:
 
 @app.route("/send_message", methods=["POST"])
 def send_message() -> Flask.response_class:
-    form = request.form
-    messages.append(('user', form['user-input']))
+    prompt = request.form['user-input']
+    messages.append(('user', prompt))
 
-    response = ask_LLM(form['user-input'])
+    relevant_documents = retrieval(prompt)
+    response = generation(prompt, relevant_documents)
 
     return Response(response, content_type="text/plain",
                     status=200, direct_passthrough=True)
