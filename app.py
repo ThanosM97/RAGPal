@@ -1,31 +1,55 @@
-""" This module implements a Flask API for the RAGPal application.
+"""This module implements a Flask API for the RAGPal application.
 
 Endpoints:
 '/' : Endpoint for home/index page (methods: GET)
 '/send_message' : Endpoint for sending a request to the LLM to obtain a
-                  response based on user's prompt. (methods: POST,
-                  request args: `user-input`)
+                  response based on user's prompt. Returns the streamed
+                  response. (methods: POST, request args: `user-input`)
+
+Functions:
+'ask_LLM' : Makes the request to AzureOpenAI API given an input string
+            `prompt`. The response is a stream, so the function is a
+            Generator that yields chunks of the response as they come.
 """
-import time
+import os
 from typing import Generator
 
 from flask import Flask, Response, render_template, request
-from lorem_text import lorem
+from openai import AzureOpenAI
 
 app = Flask(__name__)
 messages = []
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
+
 
 def ask_LLM(prompt: str) -> Generator[bytes, None, str]:
-    # TODO: Send a request to the selected LLM
-    response = lorem.paragraph()
+    client = AzureOpenAI(
+        api_key=OPENAI_API_KEY,
+        azure_endpoint=OPENAI_API_BASE,
+        api_version="2023-07-01-preview"
+    )
 
-    # Simulate bot response in chunks
-    for sentence in response.split(","):
-        time.sleep(2)  # Simulate delay
-        yield sentence.encode('utf-8')
+    message_text = [{"role": "user", "content": prompt}]
 
+    chat_completion = client.chat.completions.create(
+        messages=message_text,
+        model="gpt-4-turbo",
+        stream=True
+    )
+
+    response = []
+    for chunk in chat_completion:
+        if len(chunk.choices) > 0:
+            msg = chunk.choices[0].delta.content
+            msg = "" if msg is None else msg
+            response.append(msg)
+            yield msg.encode('utf-8')
+
+    response = "".join(response)
     messages.append(('bot', response))
+
     return response
 
 
