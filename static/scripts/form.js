@@ -56,8 +56,18 @@ function postMessage() {
                     $('#chat-messages').find('div:last').append(responseChunk)
 
                     if (result.done) { //Last chunk has arrived, add the span
+                        var markdownText = $('#chat-messages').find('div:last').html() // Get the markdown text
+
+                        // Convert Markdown to HTML
+                        var converter = new showdown.Converter();
+                        var htmlContent = converter.makeHtml(markdownText);
+
+                        // Append the HTML converted context
+                        $('#chat-messages').find('div:last').html(htmlContent)
                         $('#chat-messages').find('div:last').append('<span class="from-label">RAGPal</span>')
-                        $('#user-input').prop('disabled', false); // Enable input field
+
+                        // Enable input field
+                        $('#user-input').prop('disabled', false);
 
                         // Scroll to the last message
                         $('html, body').animate({ scrollTop: $(document).height() }, 'slow');

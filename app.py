@@ -31,7 +31,10 @@ def ask_LLM(prompt: str) -> Generator[bytes, None, str]:
         api_version="2023-07-01-preview"
     )
 
-    message_text = [{"role": "user", "content": prompt}]
+    instruction = "Respond using Markdown if formatting is needed."
+    message_text = [
+        {"role": "system", "content": instruction},
+        {"role": "user", "content": prompt}]
 
     chat_completion = client.chat.completions.create(
         messages=message_text,
