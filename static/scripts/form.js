@@ -17,17 +17,19 @@ $('#user-input').on('keydown', function (event) {
     }
 });
 
-// Post message when form is submitted using the button
-$(document).ready(function () {
-    $('#chat-form').submit(function (event) {
-        event.preventDefault();
-        postMessage();
-
-    });
+// Toggle label when switch is toggled
+$('#rag-switch .form-check-input').on('change', function () {
+    if (this.checked) {
+        $('#rag-switch .form-check-label').text('Enabled')
+    } else {
+        $('#rag-switch .form-check-label').text('Disabled')
+    }
 });
+
 
 function postMessage() {
     var userInput = $('#user-input').val().trim();
+    var ragEnabled = $('#switch').is(":checked")
     if (userInput !== '') {
         $('#chat-messages').append('<div class="message user-message">' + userInput + '<span class="from-label">You</span></div>'); // Display user input immediately
         $('#user-input').val(''); // Clear input field
@@ -40,7 +42,7 @@ function postMessage() {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: 'user-input=' + encodeURIComponent(userInput) //for special characters in user's input,
+            body: 'user-input=' + encodeURIComponent(userInput) + "&rag-enabled=" + ragEnabled //for special characters in user's input,
         })
             .then(response => {
                 const reader = response.body.getReader();
@@ -85,3 +87,12 @@ function postMessage() {
             });
     }
 }
+
+// Post message when form is submitted using the button
+$(document).ready(function () {
+    $('#chat-form').submit(function (event) {
+        event.preventDefault();
+        postMessage();
+
+    });
+});

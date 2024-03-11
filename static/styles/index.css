@@ -60,3 +60,20 @@ hr {
     border-radius: 10px;
     margin-right: 5px;
 }
+
+#rag-switch {
+    position: fixed;
+    bottom: 10px;
+    right: 5px;
+    color: white;
+}
+
+#rag-switch .form-check-input[type="checkbox"] {
+    width: 50px;
+    height: 20px;
+}
+
+#rag-switch label {
+    margin-left: 5px;
+    font-size: 20px;
+}

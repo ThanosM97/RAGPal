@@ -15,7 +15,7 @@ Functions:
               argument `prompt`.
 """
 import os
-from typing import Generator, List
+from typing import Generator, List, Optional
 
 from flask import Flask, Response, render_template, request
 from openai import AzureOpenAI
@@ -42,7 +42,7 @@ def retrieval(prompt: str) -> List[str]:
 
 def generation(
     prompt: str,
-    relevant_documents: List[str]
+    relevant_documents: Optional[List[str]] = None
 ) -> Generator[bytes, None, str]:
     """Yields chunks of AzureOpenAI API's streamed response.
 
@@ -54,7 +54,8 @@ def generation(
 
     Args:
     - prompt (str): User input/prompt.
-    - relevant_documents (List): A list of relevant documents to the prompt.
+    - relevant_documents (List | None): A list of relevant documents to
+                                        the input prompt, or None.
 
     Yields:
         Chunks of the response in bytes (utf-8 encoded).
@@ -70,22 +71,28 @@ def generation(
 
     instruction = "Respond using Markdown if formatting is needed. "
 
-    rag_instructions = (
-        "Do not justify your answers. " +
-        "Forget the information you have outside of context." +
-        "If the answer to the question is not provided in the context, say" +
-        "I don't know the answer to this question." +
-        "Do not mention that context is provided to the user. " +
-        "Based on these instructions, and the relevant context, answer this:")
+    if relevant_documents is None:
+        message_text = [
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": prompt}]
+    else:
+        rag_instructions = (
+            "Do not justify your answers. " +
+            "Forget the information you have outside of context." +
+            "If the answer to the question is not provided in the context, " +
+            "say I don't know the answer to this question." +
+            "Do not mention that context is provided to the user. " +
+            "Based on these instructions, and the relevant context, " +
+            "Answer the following question:")
 
-    documents = "[NEW DOCUMENT]: ".join(relevant_documents)
-    message_text = [
-        {"role": "system", "content": instruction},
-        {
-            "role": "system",
-            "content": f"Relevant context: {documents}"
-        },
-        {"role": "user", "content": rag_instructions + prompt}]
+        documents = "[NEW DOCUMENT]: ".join(relevant_documents)
+        message_text = [
+            {"role": "system", "content": instruction},
+            {
+                "role": "system",
+                "content": f"Relevant context: {documents}"
+            },
+            {"role": "user", "content": rag_instructions + prompt}]
 
     chat_completion = client.chat.completions.create(
         messages=message_text,
@@ -117,9 +124,10 @@ def home() -> str:
 @app.route("/send_message", methods=["POST"])
 def send_message() -> Flask.response_class:
     prompt = request.form['user-input']
+    rag_enabled = request.form['rag-enabled'] == 'true'
     messages.append(('user', prompt))
 
-    relevant_documents = retrieval(prompt)
+    relevant_documents = retrieval(prompt) if rag_enabled else None
     response = generation(prompt, relevant_documents)
 
     return Response(response, content_type="text/plain",
