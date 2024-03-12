@@ -5,6 +5,8 @@ Endpoints:
 '/send_message' : Endpoint for sending a request to the LLM to obtain a
                   response based on user's prompt. Returns the streamed
                   response. (methods: POST, request args: `user-input`)
+'/upload' : Endpoint for uploading text files or text input to the knowledge
+            base of the RAG model. (methods: GET, POST)
 
 Functions:
 'generation' : Makes the request to AzureOpenAI API given an input string
@@ -17,11 +19,17 @@ Functions:
 import os
 from typing import Generator, List, Optional
 
+import numpy as np
 from flask import Flask, Response, render_template, request
 from openai import AzureOpenAI
+from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
+
+# Global variables
 messages = []
+knowledge_base = {}
+uid = 0
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
@@ -30,14 +38,42 @@ OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
 def retrieval(prompt: str) -> List[str]:
     """Returns relevant documents to `prompt`.
 
+    This function first makes a request to AzureOpenAI embeddings endpoints to
+    generate query embeddings for the input `prompt`. Then, the cosine
+    similarity between the query embeddings and the embeddings of each document
+    in the `knowledge_base` are computed, keeping only the documents with a
+    value greater than 0.8.
+
     Args:
     - prompt (str): User input/prompt.
 
     Returns:
         A list of relevant documents.
     """
-    # TODO: Add retrieval process or return custom text
-    return []
+    relevant_documents = []
+
+    client = AzureOpenAI(
+        api_key=OPENAI_API_KEY,
+        azure_endpoint=OPENAI_API_BASE,
+        api_version="2023-07-01-preview"
+    )
+
+    # Generate query embeddings
+    query_embedding = np.array(client.embeddings.create(
+        input=prompt,
+        model="embedding-ada"
+    ).data[0].embedding)
+
+    # Comput the cosine similarity between query and document embeddings
+    for doc_info in knowledge_base.values():
+        sim = cosine_similarity(
+            query_embedding.reshape(1, -1),
+            doc_info['embedding'].reshape(1, -1))
+
+        if sim > 0.8:
+            relevant_documents.append(doc_info['content'])
+
+    return relevant_documents
 
 
 def generation(
@@ -47,10 +83,15 @@ def generation(
     """Yields chunks of AzureOpenAI API's streamed response.
 
     This generator function takes as input a user `prompt` and the retrieved
-    `relevant_documents`. It makes a request to AzureOpenAI's API using
-    formatting and RAG-specific instructions for the generation process,
-    the relevant docuements, and the user prompt. It yields the chunks of
-    the API's response as they come.
+    `relevant_documents`. It makes a request to AzureOpenAI's chat completion
+    API using formatting and RAG-specific instructions for the generation
+    process, the relevant docuements, and the user prompt. It yields the chunks
+    of the API's response as they come.
+
+    If the `relevant_documents` argument is None, the user has disabled the
+    RAG functionality, so a generic request will be made to AzureOpenAI's
+    chat completion API using only the `input_prompt` and the formatting
+    isntruction.
 
     Args:
     - prompt (str): User input/prompt.
@@ -69,13 +110,14 @@ def generation(
         api_version="2023-07-01-preview"
     )
 
+    # Formatting instruction
     instruction = "Respond using Markdown if formatting is needed. "
 
-    if relevant_documents is None:
+    if relevant_documents is None:  # RAG functionality disabled
         message_text = [
             {"role": "system", "content": instruction},
             {"role": "user", "content": prompt}]
-    else:
+    else:  # with RAG
         rag_instructions = (
             "Do not justify your answers. " +
             "Forget the information you have outside of context." +
@@ -132,6 +174,55 @@ def send_message() -> Flask.response_class:
 
     return Response(response, content_type="text/plain",
                     status=200, direct_passthrough=True)
+
+
+@app.route('/upload', methods=['GET', 'POST'])
+def upload() -> str:
+    global uid
+
+    alert = None
+    alert_type = None
+    document = None
+
+    if request.method == "POST":
+        try:
+            if 'text' in request.form:  # Text field was used
+                document = request.form['text']
+                alert_type = "success"
+                alert = "Text sucessfully uploaded."
+            elif 'file' in request.files:  # File was selected
+                document = request.files['file'].read().decode('utf-8')
+                alert_type = "success"
+                alert = "Files sucessfully uploaded."
+        except Exception as e:
+            alert_type = "danger"
+            alert = "No files were uploaded. " + str(e)
+
+        if document is not None:  # Text or file was uploaded
+            short_desc = " ".join(document.split(" ")[:15]) + "..."
+            client = AzureOpenAI(
+                api_key=OPENAI_API_KEY,
+                azure_endpoint=OPENAI_API_BASE,
+                api_version="2023-07-01-preview"
+            )
+
+            # Generate document embeddings
+            embd = np.array(client.embeddings.create(
+                input=document,
+                model="embedding-ada"
+            ).data[0].embedding)
+
+            # Add document to knowledge base
+            knowledge_base[uid] = {
+                "content": document,
+                "short_desc": short_desc,
+                "embedding": embd
+            }
+
+            uid += 1
+
+    return render_template(
+        "upload.html",  alert_type=alert_type, alert=alert)
 
 
 if __name__ == '__main__':
