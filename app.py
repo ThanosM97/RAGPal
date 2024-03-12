@@ -7,6 +7,8 @@ Endpoints:
                   response. (methods: POST, request args: `user-input`)
 '/upload' : Endpoint for uploading text files or text input to the knowledge
             base of the RAG model. (methods: GET, POST)
+'/view' : Endpoint for viewing the contents of the knowledge base, with an
+          option to delete entries. (methods: GET, POST)
 
 Functions:
 'generation' : Makes the request to AzureOpenAI API given an input string
@@ -223,6 +225,24 @@ def upload() -> str:
 
     return render_template(
         "upload.html",  alert_type=alert_type, alert=alert)
+
+
+@app.route('/view', methods=['GET', 'POST'])
+def view() -> str:
+    if request.method == "POST":  # Delete entry request
+        doc_id = int(request.form['id'])
+
+        if doc_id in knowledge_base:
+            del knowledge_base[doc_id]
+            return Response("Successfully deleted.", status=200)
+        else:
+            return Response(
+                "Document is not in the Knowledge Base.", status=404)
+
+    documents = [(key, doc['short_desc'])
+                 for key, doc in knowledge_base.items()]
+
+    return render_template("view.html", documents=documents)
 
 
 if __name__ == '__main__':
