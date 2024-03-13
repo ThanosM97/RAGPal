@@ -13,9 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
 
-# # Set environmental variables
-# ENV OPENAI_API_KEY=<YOUR_API_KEY>
-# ENV OPENAI_API_BASE=<API_ENDPOINT>
-
 # Run app.py when the container launches
 CMD ["python", "app.py"]
