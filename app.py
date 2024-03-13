@@ -21,24 +21,40 @@ Functions:
 import os
 from typing import Generator, List, Optional
 
-import numpy as np
 from dotenv import load_dotenv
 from flask import Flask, Response, render_template, request
 from openai import AzureOpenAI
-from sklearn.metrics.pairwise import cosine_similarity
+from qdrant_client import QdrantClient, models
 
 # Initialize Flask app
 app = Flask(__name__)
-
-# Global variables
-messages = []
-knowledge_base = {}
-uid = 0
 
 # Load variables from .env file
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
+
+# Initialize AzureOpenAI client
+azure_client = AzureOpenAI(
+    api_key=OPENAI_API_KEY,
+    azure_endpoint=OPENAI_API_BASE,
+    api_version="2023-07-01-preview"
+)
+
+# Initialize qdrant client and collection
+qdrant = QdrantClient(location=":memory:")
+
+qdrant.recreate_collection(
+    collection_name="Knowledge Base",
+    vectors_config=models.VectorParams(
+        size=1536,  # For embedding-ada model
+        distance=models.Distance.COSINE,
+    ),
+)
+
+# Global variables
+messages = []
+uid = 0
 
 
 def retrieval(prompt: str) -> List[str]:
@@ -56,29 +72,19 @@ def retrieval(prompt: str) -> List[str]:
     Returns:
         A list of relevant documents.
     """
-    relevant_documents = []
-
-    client = AzureOpenAI(
-        api_key=OPENAI_API_KEY,
-        azure_endpoint=OPENAI_API_BASE,
-        api_version="2023-07-01-preview"
-    )
-
     # Generate query embeddings
-    query_embedding = np.array(client.embeddings.create(
+    query_embedding = list(azure_client.embeddings.create(
         input=prompt,
         model="embedding-ada"
     ).data[0].embedding)
 
-    # Comput the cosine similarity between query and document embeddings
-    for doc_info in knowledge_base.values():
-        sim = cosine_similarity(
-            query_embedding.reshape(1, -1),
-            doc_info['embedding'].reshape(1, -1))
+    hits = qdrant.search(
+        collection_name="Knowledge Base",
+        query_vector=query_embedding,
+        limit=3
+    )
 
-        if sim > 0.8:
-            relevant_documents.append(doc_info['content'])
-
+    relevant_documents = [hit.payload["content"] for hit in hits]
     return relevant_documents
 
 
@@ -207,24 +213,28 @@ def upload() -> str:
 
         if document is not None:  # Text or file was uploaded
             short_desc = " ".join(document.split(" ")[:15]) + "..."
-            client = AzureOpenAI(
-                api_key=OPENAI_API_KEY,
-                azure_endpoint=OPENAI_API_BASE,
-                api_version="2023-07-01-preview"
-            )
 
             # Generate document embeddings
-            embd = np.array(client.embeddings.create(
+            embd = list(azure_client.embeddings.create(
                 input=document,
                 model="embedding-ada"
             ).data[0].embedding)
 
-            # Add document to knowledge base
-            knowledge_base[uid] = {
+            # # Add document to knowledge base
+            doc = {
                 "content": document,
-                "short_desc": short_desc,
-                "embedding": embd
+                "short_desc": short_desc
             }
+
+            qdrant.upload_points(
+                collection_name="Knowledge Base",
+                points=[
+                    models.PointStruct(
+                        id=uid,
+                        vector=embd.tolist(), payload=doc
+                    )
+                ]
+            )
 
             uid += 1
 
@@ -237,15 +247,23 @@ def view() -> str:
     if request.method == "POST":  # Delete entry request
         doc_id = int(request.form['id'])
 
-        if doc_id in knowledge_base:
-            del knowledge_base[doc_id]
+        try:
+            qdrant.delete(
+                collection_name="Knowledge Base",
+                points_selector=[doc_id]
+            )
             return Response("Successfully deleted.", status=200)
-        else:
+        except Exception:
             return Response(
                 "Document is not in the Knowledge Base.", status=404)
 
-    documents = [(key, doc['short_desc'])
-                 for key, doc in knowledge_base.items()]
+    scroll_results = qdrant.scroll(
+        collection_name="Knowledge Base",
+        with_vectors=False,
+        with_payload=True
+    )[0]
+    documents = [(record.id, record.payload["short_desc"])
+                 for record in scroll_results]
 
     return render_template("view.html", documents=documents)
 
