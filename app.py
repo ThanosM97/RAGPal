@@ -22,10 +22,12 @@ import os
 from typing import Generator, List, Optional
 
 import numpy as np
+from dotenv import load_dotenv
 from flask import Flask, Response, render_template, request
 from openai import AzureOpenAI
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Initialize Flask app
 app = Flask(__name__)
 
 # Global variables
@@ -33,6 +35,8 @@ messages = []
 knowledge_base = {}
 uid = 0
 
+# Load variables from .env file
+load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
 
@@ -113,7 +117,8 @@ def generation(
     )
 
     # Formatting instruction
-    instruction = "Respond using Markdown if formatting is needed. "
+    instruction = ("You are a virtual assistant. " +
+                   "Respond using Markdown if formatting is needed. ")
 
     if relevant_documents is None:  # RAG functionality disabled
         message_text = [
