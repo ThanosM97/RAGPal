@@ -22,3 +22,49 @@ RAGPal is implemented as a web application with a front-end interface for user i
 * **Back-end**: Flask API handles the back-end RAG logic, including processing user queries, interacting with Azure OpenAI APIs, and querying the Qdrant vector database.
 * **Azure OpenAI APIs**: The chat-completion model is utilized for generating text responses, while the embedding-ada model produces embeddings for input queries (i.e., user messages) and documents in the database.
 * **Qdrant Vector Database**: Used as an in-memory knowledge base, storing documents and facilitating vector similarity search for retrieving query-relevant information.
+
+## Getting Started
+1. In order for RAGPal to work, you would need to have access to AzureOpenAI resources for chat-completion and embeddings. Then, you can modify `config.yaml` to the corresponding resources that you have access to.
+2. Create a .env file in the root directory with the following variables
+   ```
+   OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+   OPENAI_API_BASE=<OPENAI_API_ENDPOINT>
+   ```
+3. Run the application:
+     * **Docker**:
+       If you have docker installed, you can build a docker image and deploy the RAGPal application using the following commands in the root directory.
+       ```bash
+       docker build -t ragpal .
+       docker run -d -p 5000:5000 --name RAGPAL ragpal
+       ```
+   * **Python (conda)**: The RAGPal application was developed in Python 3.9. Use the following commands in the root directory to create a virtual environment with conda, install the required packages, and run the application.
+     ```bash
+     # Create a virtual environment with conda
+     conda create -n ragpal python=3.9
+
+     # Activate conda environment
+     conda activate ragpal
+
+     # Install required packages
+     pip install -r requirements.txt
+
+     # Run the RAGPal app
+     python app.py
+     ```
+    * **Python**: The RAGPal application was developed in Python 3.9, and it needs to be installed prior to the creation of the virtual environment. Use the following commands in the root directory to create a python virtual environment, install the required packages, and run the application.
+       ```bash
+       # Create a Python virtual environment
+       python3.9 -m venv venv
+  
+       # Activate the virtual environment on Windows
+       venv\Scripts\activate
+  
+       # Activate the virtual environment on Linux/macOS
+       source venv/bin/activate
+  
+       # Install required packages
+       pip install -r requirements.txt
+  
+       # Run the RAGPal app
+       python app.py
+       ```
