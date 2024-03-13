@@ -180,11 +180,14 @@ def send_message() -> Flask.response_class:
     rag_enabled = request.form['rag-enabled'] == 'true'
     messages.append(('user', prompt))
 
-    relevant_documents = retrieval(prompt) if rag_enabled else None
-    response = generation(prompt, relevant_documents)
+    try:
+        relevant_documents = retrieval(prompt) if rag_enabled else None
+        response = generation(prompt, relevant_documents)
 
-    return Response(response, content_type="text/plain",
-                    status=200, direct_passthrough=True)
+        return Response(response, content_type="text/plain",
+                        status=200, direct_passthrough=True)
+    except Exception:
+        return Response(status=500)
 
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -212,11 +215,14 @@ def upload() -> str:
         if document is not None:  # Text or file was uploaded
             short_desc = " ".join(document.split(" ")[:15]) + "..."
 
-            # Generate document embeddings
-            embd = list(azure_client.embeddings.create(
-                input=document,
-                model=config['azure-openai']['embedding']['model']
-            ).data[0].embedding)
+            try:
+                # Generate document embeddings
+                embd = list(azure_client.embeddings.create(
+                    input=document,
+                    model=config['azure-openai']['embedding']['model']
+                ).data[0].embedding)
+            except Exception:
+                return Response(status=500)
 
             # # Add document to knowledge base
             doc = {
