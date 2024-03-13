@@ -21,6 +21,7 @@ Functions:
 import os
 from typing import Generator, List, Optional
 
+import yaml
 from dotenv import load_dotenv
 from flask import Flask, Response, render_template, request
 from openai import AzureOpenAI
@@ -34,12 +35,15 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
 
+# Load config variables from config.yaml
+with open('config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
 # Initialize AzureOpenAI client
 azure_client = AzureOpenAI(
     api_key=OPENAI_API_KEY,
     azure_endpoint=OPENAI_API_BASE,
-    api_version="2023-07-01-preview"
-)
+    api_version=config['azure-openai']['client']['api_version'])
 
 # Initialize qdrant client and collection
 qdrant = QdrantClient(location=":memory:")
@@ -47,7 +51,7 @@ qdrant = QdrantClient(location=":memory:")
 qdrant.recreate_collection(
     collection_name="Knowledge Base",
     vectors_config=models.VectorParams(
-        size=1536,  # For embedding-ada model
+        size=config['azure-openai']['embedding']['vector_size'],
         distance=models.Distance.COSINE,
     ),
 )
@@ -75,13 +79,13 @@ def retrieval(prompt: str) -> List[str]:
     # Generate query embeddings
     query_embedding = list(azure_client.embeddings.create(
         input=prompt,
-        model="embedding-ada"
+        model=config['azure-openai']['embedding']['model']
     ).data[0].embedding)
 
     hits = qdrant.search(
         collection_name="Knowledge Base",
         query_vector=query_embedding,
-        limit=3
+        limit=config['qdrant']['top_k']
     )
 
     relevant_documents = [hit.payload["content"] for hit in hits]
@@ -116,12 +120,6 @@ def generation(
     Returns:
         The generated response as a string.
     """
-    client = AzureOpenAI(
-        api_key=OPENAI_API_KEY,
-        azure_endpoint=OPENAI_API_BASE,
-        api_version="2023-07-01-preview"
-    )
-
     # Formatting instruction
     instruction = ("You are a virtual assistant. " +
                    "Respond using Markdown if formatting is needed. ")
@@ -149,9 +147,9 @@ def generation(
             },
             {"role": "user", "content": rag_instructions + prompt}]
 
-    chat_completion = client.chat.completions.create(
+    chat_completion = azure_client.chat.completions.create(
         messages=message_text,
-        model="gpt-4-turbo",
+        model=config['azure-openai']['chat-completion']['model'],
         stream=True,
         temperature=0.7  # Makes the model more focused and deterministic
     )
@@ -217,7 +215,7 @@ def upload() -> str:
             # Generate document embeddings
             embd = list(azure_client.embeddings.create(
                 input=document,
-                model="embedding-ada"
+                model=config['azure-openai']['embedding']['model']
             ).data[0].embedding)
 
             # # Add document to knowledge base
@@ -231,7 +229,7 @@ def upload() -> str:
                 points=[
                     models.PointStruct(
                         id=uid,
-                        vector=embd.tolist(), payload=doc
+                        vector=embd, payload=doc
                     )
                 ]
             )

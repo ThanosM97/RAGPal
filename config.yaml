@@ -1,0 +1,11 @@
+azure-openai:
+  client:
+    api_version: 2023-07-01-preview
+  chat-completion:
+    model: gpt-4-turbo
+  embedding:
+    model: embedding-ada
+    vector_size: 1536
+
+qdrant:
+  top_k: 3
