@@ -30,3 +30,12 @@ $(document).ready(function () {
         deleteDoc(documentId);
     });
 });
+
+// onClick event listener for load more button
+$(document).ready(function () {
+    $('#load-more-btn').on('click', function () {
+        var old_limit = parseInt($("#documents").find("div:last").find("button").attr("id"));
+        var new_limit = old_limit + 10;
+        window.location.href = "/view?limit=" + new_limit
+    });
+});

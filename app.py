@@ -121,7 +121,7 @@ def generation(
         The generated response as a string.
     """
     # Formatting instruction
-    instruction = ("You are a virtual assistant. " +
+    instruction = ("You are a multilingual virtual assistant. " +
                    "Respond using Markdown if formatting is needed. ")
 
     if relevant_documents is None:  # RAG functionality disabled
@@ -133,8 +133,8 @@ def generation(
             "Do not justify your answers. " +
             "Forget the information you have outside of context." +
             "If the answer to the question is not provided in the context, " +
-            "say I don't know the answer to this question." +
-            "Do not mention that context is provided to the user. " +
+            "say I don't know the answer to this question in the appropriate" +
+            "language. Do not mention that context is provided to the user. " +
             "Based on these instructions, and the relevant context, " +
             "Answer the following question:")
 
@@ -261,10 +261,14 @@ def view() -> str:
             return Response(
                 "Document is not in the Knowledge Base.", status=404)
 
+    # Default limit
+    limit = int(request.args.get('limit')) if 'limit' in request.args else 10
+
     scroll_results = qdrant.scroll(
         collection_name="Knowledge Base",
         with_vectors=False,
-        with_payload=True
+        with_payload=True,
+        limit=limit
     )[0]
     documents = [(record.id, record.payload["short_desc"])
                  for record in scroll_results]

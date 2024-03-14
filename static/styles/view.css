@@ -55,3 +55,9 @@ h1 {
     border-radius: 5px;
     background-color: white;
 }
+
+#load-more-btn {
+    position: relative;
+    width: 10%;
+    left: 45%;
+}
