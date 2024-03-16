@@ -26,7 +26,7 @@ function deleteDoc(documentId) {
 // onClick event listener for delete button
 $(document).ready(function () {
     $('.delete-btn').on('click', function () {
-        var documentId = $(this).attr('id');
+        var documentId = $(this).attr('data-id');
         deleteDoc(documentId);
     });
 });
@@ -34,7 +34,7 @@ $(document).ready(function () {
 // onClick event listener for load more button
 $(document).ready(function () {
     $('#load-more-btn').on('click', function () {
-        var old_limit = parseInt($("#documents").find("div:last").find("button").attr("id"));
+        var old_limit = parseInt($("#documents").find("div").length)
         var new_limit = old_limit + 10;
         window.location.href = "/view?limit=" + new_limit
     });

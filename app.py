@@ -19,6 +19,8 @@ Functions:
               argument `prompt`.
 """
 import os
+import time
+import uuid
 from typing import Generator, List, Optional
 
 import yaml
@@ -49,7 +51,7 @@ azure_client = AzureOpenAI(
 qdrant = QdrantClient(location=":memory:")
 
 qdrant.recreate_collection(
-    collection_name="Knowledge Base",
+    collection_name="Knowledge_Base",
     vectors_config=models.VectorParams(
         size=config['azure-openai']['embedding']['vector_size'],
         distance=models.Distance.COSINE,
@@ -58,7 +60,6 @@ qdrant.recreate_collection(
 
 # Global variables
 messages = []
-uid = 0
 
 
 def retrieval(prompt: str) -> List[str]:
@@ -83,7 +84,7 @@ def retrieval(prompt: str) -> List[str]:
     ).data[0].embedding)
 
     hits = qdrant.search(
-        collection_name="Knowledge Base",
+        collection_name="Knowledge_Base",
         query_vector=query_embedding,
         limit=config['qdrant']['top_k']
     )
@@ -192,7 +193,6 @@ def send_message() -> Flask.response_class:
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload() -> str:
-    global uid
 
     alert = None
     alert_type = None
@@ -227,20 +227,19 @@ def upload() -> str:
             # # Add document to knowledge base
             doc = {
                 "content": document,
-                "short_desc": short_desc
+                "short_desc": short_desc,
+                "uploaded": time.time()
             }
 
             qdrant.upload_points(
-                collection_name="Knowledge Base",
+                collection_name="Knowledge_Base",
                 points=[
                     models.PointStruct(
-                        id=uid,
+                        id=str(uuid.uuid4()),
                         vector=embd, payload=doc
                     )
                 ]
             )
-
-            uid += 1
 
     return render_template(
         "upload.html",  alert_type=alert_type, alert=alert)
@@ -249,11 +248,11 @@ def upload() -> str:
 @app.route('/view', methods=['GET', 'POST'])
 def view() -> str:
     if request.method == "POST":  # Delete entry request
-        doc_id = int(request.form['id'])
+        doc_id = request.form['id']
 
         try:
             qdrant.delete(
-                collection_name="Knowledge Base",
+                collection_name="Knowledge_Base",
                 points_selector=[doc_id]
             )
             return Response("Successfully deleted.", status=200)
@@ -265,9 +264,10 @@ def view() -> str:
     limit = int(request.args.get('limit')) if 'limit' in request.args else 10
 
     scroll_results = qdrant.scroll(
-        collection_name="Knowledge Base",
+        collection_name="Knowledge_Base",
         with_vectors=False,
         with_payload=True,
+        order_by="uploaded",
         limit=limit
     )[0]
     documents = [(record.id, record.payload["short_desc"])
