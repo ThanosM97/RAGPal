@@ -37,10 +37,10 @@ RAGPal is implemented as a web application with a front-end interface for user i
        docker build -t ragpal .
        docker run -d -p 5000:5000 --name RAGPAL ragpal
        ```
-   * **Python (conda)**: The RAGPal application was developed in Python 3.9. Use the following commands in the root directory to create a virtual environment with conda, install the required packages, and run the application.
+   * **Python (conda)**: The RAGPal application was developed in Python 3.11. Use the following commands in the root directory to create a virtual environment with conda, install the required packages, and run the application.
      ```bash
      # Create a virtual environment with conda
-     conda create -n ragpal python=3.9
+     conda create -n ragpal python=3.11
 
      # Activate conda environment
      conda activate ragpal
@@ -51,10 +51,10 @@ RAGPal is implemented as a web application with a front-end interface for user i
      # Run the RAGPal app
      python app.py
      ```
-    * **Python**: The RAGPal application was developed in Python 3.9, and it needs to be installed prior to the creation of the virtual environment. Use the following commands in the root directory to create a python virtual environment, install the required packages, and run the application.
+    * **Python**: The RAGPal application was developed in Python 3.11, and it needs to be installed prior to the creation of the virtual environment. Use the following commands in the root directory to create a python virtual environment, install the required packages, and run the application.
        ```bash
        # Create a Python virtual environment
-       python3.9 -m venv venv
+       python3.11 -m venv venv
   
        # Activate the virtual environment on Windows
        venv\Scripts\activate
