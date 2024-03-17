@@ -19,18 +19,23 @@ Functions:
               argument `prompt`.
 """
 import os
-import time
-import uuid
+import urllib.parse
 from typing import Generator, List, Optional
 
+import uvicorn
 import yaml
 from dotenv import load_dotenv
-from flask import Flask, Response, render_template, request
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from openai import AzureOpenAI
 from qdrant_client import QdrantClient, models
 
-# Initialize Flask app
-app = Flask(__name__)
+# Initialize FASTAPI app
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Load variables from .env file
 load_dotenv()
@@ -51,7 +56,7 @@ azure_client = AzureOpenAI(
 qdrant = QdrantClient(location=":memory:")
 
 qdrant.recreate_collection(
-    collection_name="Knowledge_Base",
+    collection_name=config['qdrant']['collection_name'],
     vectors_config=models.VectorParams(
         size=config['azure-openai']['embedding']['vector_size'],
         distance=models.Distance.COSINE,
@@ -84,7 +89,7 @@ def retrieval(prompt: str) -> List[str]:
     ).data[0].embedding)
 
     hits = qdrant.search(
-        collection_name="Knowledge_Base",
+        collection_name=config['qdrant']['collection_name'],
         query_vector=query_embedding,
         limit=config['qdrant']['top_k']
     )
@@ -169,112 +174,31 @@ def generation(
     return response
 
 
-@app.route('/', methods=['GET'])
-def home() -> str:
-    return render_template(
-        "index.html",  messages=messages)
+@app.get('/', response_class=HTMLResponse)
+def home(request: Request) -> str:
+    return templates.TemplateResponse("index.html",
+                                      context={"request": request})
 
 
-@app.route("/send_message", methods=["POST"])
-def send_message() -> Flask.response_class:
-    prompt = request.form['user-input']
-    rag_enabled = request.form['rag-enabled'] == 'true'
-    messages.append(('user', prompt))
+@app.post("/send_message")
+async def send_message(request: Request):
+    form_data = await request.form()
+
+    user_input = urllib.parse.unquote(form_data.get('user_input'))
+    rag_enabled = form_data.get('rag_enabled')
+
+    messages.append(('user', user_input))
 
     try:
-        relevant_documents = retrieval(prompt) if rag_enabled else None
-        response = generation(prompt, relevant_documents)
+        relevant_documents = retrieval(user_input) if rag_enabled else None
+        response = generation(user_input, relevant_documents)
 
-        return Response(response, content_type="text/plain",
-                        status=200, direct_passthrough=True)
+        return StreamingResponse(
+            content=response, media_type="text/plain",
+            status_code=200, background=None)
     except Exception:
-        return Response(status=500)
+        return Response(status_code=500)
 
 
-@app.route('/upload', methods=['GET', 'POST'])
-def upload() -> str:
-
-    alert = None
-    alert_type = None
-    document = None
-
-    if request.method == "POST":
-        try:
-            if 'text' in request.form:  # Text field was used
-                document = request.form['text']
-                alert_type = "success"
-                alert = "Text sucessfully uploaded."
-            elif 'file' in request.files:  # File was selected
-                document = request.files['file'].read().decode('utf-8')
-                alert_type = "success"
-                alert = "Files sucessfully uploaded."
-        except Exception as e:
-            alert_type = "danger"
-            alert = "No files were uploaded. " + str(e)
-
-        if document is not None:  # Text or file was uploaded
-            short_desc = " ".join(document.split(" ")[:15]) + "..."
-
-            try:
-                # Generate document embeddings
-                embd = list(azure_client.embeddings.create(
-                    input=document,
-                    model=config['azure-openai']['embedding']['model']
-                ).data[0].embedding)
-            except Exception:
-                return Response(status=500)
-
-            # # Add document to knowledge base
-            doc = {
-                "content": document,
-                "short_desc": short_desc,
-                "uploaded": time.time()
-            }
-
-            qdrant.upload_points(
-                collection_name="Knowledge_Base",
-                points=[
-                    models.PointStruct(
-                        id=str(uuid.uuid4()),
-                        vector=embd, payload=doc
-                    )
-                ]
-            )
-
-    return render_template(
-        "upload.html",  alert_type=alert_type, alert=alert)
-
-
-@app.route('/view', methods=['GET', 'POST'])
-def view() -> str:
-    if request.method == "POST":  # Delete entry request
-        doc_id = request.form['id']
-
-        try:
-            qdrant.delete(
-                collection_name="Knowledge_Base",
-                points_selector=[doc_id]
-            )
-            return Response("Successfully deleted.", status=200)
-        except Exception:
-            return Response(
-                "Document is not in the Knowledge Base.", status=404)
-
-    # Default limit
-    limit = int(request.args.get('limit')) if 'limit' in request.args else 10
-
-    scroll_results = qdrant.scroll(
-        collection_name="Knowledge_Base",
-        with_vectors=False,
-        with_payload=True,
-        order_by="uploaded",
-        limit=limit
-    )[0]
-    documents = [(record.id, record.payload["short_desc"])
-                 for record in scroll_results]
-
-    return render_template("view.html", documents=documents)
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
+if __name__ == "__main__":
+    uvicorn.run('app:app', port=5000, reload=True, host='0.0.0.0')
