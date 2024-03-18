@@ -1,0 +1,20 @@
+# Docker
+.dockerignore
+Dockerfile
+Dockerfile.archive
+docker-compose.yml
+
+# Git
+.git
+.gitignore
+.gitmodules
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+.DS_Store
+.idea
+.data
+tests
+README.md
+__pycache__/
