@@ -19,7 +19,9 @@ Functions:
               argument `prompt`.
 """
 import os
+import time
 import urllib.parse
+import uuid
 from typing import Generator, List, Optional
 
 import uvicorn
@@ -175,22 +177,23 @@ def generation(
 
 
 @app.get('/', response_class=HTMLResponse)
-def home(request: Request) -> str:
+def home(request: Request):
     return templates.TemplateResponse("index.html",
                                       context={"request": request})
 
 
 @app.post("/send_message")
-async def send_message(request: Request):
+async def send_message(request: Request) -> Response:
     form_data = await request.form()
 
-    user_input = urllib.parse.unquote(form_data.get('user_input'))
-    rag_enabled = form_data.get('rag_enabled')
+    user_input = urllib.parse.unquote(form_data.get('user-input'))
+    rag_enabled = form_data.get('rag-enabled')
 
     messages.append(('user', user_input))
 
     try:
-        relevant_documents = retrieval(user_input) if rag_enabled else None
+        relevant_documents = retrieval(
+            user_input) if rag_enabled == "true" else None
         response = generation(user_input, relevant_documents)
 
         return StreamingResponse(
@@ -198,6 +201,103 @@ async def send_message(request: Request):
             status_code=200, background=None)
     except Exception:
         return Response(status_code=500)
+
+
+@app.get("/upload", response_class=HTMLResponse)
+def upload_get(request: Request):
+
+    return templates.TemplateResponse(
+        "upload.html",  context={
+            "request": request, "alert_type": None, "alert": None})
+
+
+@app.post("/upload", response_class=HTMLResponse)
+async def upload_post(request: Request):
+    alert = None
+    alert_type = None
+    document = None
+
+    form_data = await request.form()
+
+    try:
+        if 'text' in form_data:  # Text field was used
+            document = form_data.get('text')
+            alert_type = "success"
+            alert = "Text sucessfully uploaded."
+        elif 'file' in form_data:  # File was selected
+            document = await form_data.get('file').read()
+            document = document.decode('utf-8')
+            alert_type = "success"
+            alert = "Files sucessfully uploaded."
+    except Exception as e:
+        alert_type = "danger"
+        alert = "No files were uploaded. " + str(e)
+
+    if document is not None:  # Text or file was uploaded
+        short_desc = " ".join(document.split(" ")[:15]) + "..."
+
+        try:
+            # Generate document embeddings
+            embd = list(azure_client.embeddings.create(
+                input=document,
+                model=config['azure-openai']['embedding']['model']
+            ).data[0].embedding)
+        except Exception:
+            return Response(status=500)
+
+        # # Add document to knowledge base
+        doc = {
+            "content": document,
+            "short_desc": short_desc,
+            "uploaded": time.time()
+        }
+
+        qdrant.upload_points(
+            collection_name="Knowledge_Base",
+            points=[
+                models.PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embd, payload=doc
+                )
+            ]
+        )
+
+    return templates.TemplateResponse(
+        "upload.html",  context={
+            "request": request, "alert_type": alert_type, "alert": alert})
+
+
+@app.get("/view", response_class=HTMLResponse)
+def view_get(request: Request, limit: int = 10):
+
+    scroll_results = qdrant.scroll(
+        collection_name="Knowledge_Base",
+        with_vectors=False,
+        with_payload=True,
+        order_by="uploaded",
+        limit=limit
+    )[0]
+
+    documents = [(record.id, record.payload["short_desc"])
+                 for record in scroll_results]
+
+    return templates.TemplateResponse(
+        "view.html",  context={
+            "request": request, "documents": documents})
+
+
+@app.delete("/view")
+async def view_delete(request: Request) -> Response:
+    form_data = await request.form()
+
+    try:
+        qdrant.delete(
+            collection_name=config['qdrant']['collection_name'],
+            points_selector=[form_data.get('id')]
+        )
+        return Response("Succesfully deleted.", status_code=200)
+    except Exception:
+        return Response("Document not found.", status_code=404)
 
 
 if __name__ == "__main__":
