@@ -8,7 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/index.css') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', path='styles/index.css') }}">
     <title>RAGPal</title>
 </head>
 
@@ -58,7 +58,7 @@
             </div>
         </div>
     </main>
-    <script src="{{ url_for('static',filename='scripts/form.js') }}"></script>
+    <script src="{{ url_for('static', path='scripts/form.js') }}"></script>
 </body>
 
 </html>

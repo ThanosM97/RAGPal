@@ -5,7 +5,7 @@ Implements functions that control document entry deletion.
 // Sends POST request to delete entry from the knowledge base
 function deleteDoc(documentId) {
     fetch('/view', {
-        method: 'POST',
+        method: 'DELETE',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },

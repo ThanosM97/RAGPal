@@ -8,4 +8,5 @@ azure-openai:
     vector_size: 1536
 
 qdrant:
+  collection_name: "Knowledge_Base"
   top_k: 3
