@@ -2,33 +2,34 @@
 
 Endpoints:
 '/' : Endpoint for home/index page (methods: GET)
-'/send_message' : Endpoint for sending a request to the LLM to obtain a
-                  response based on user's prompt. Returns the streamed
-                  response. (methods: POST, request args: `user-input`)
 '/upload' : Endpoint for uploading text files or text input to the knowledge
             base of the RAG model. (methods: GET, POST)
 '/view' : Endpoint for viewing the contents of the knowledge base, with an
           option to delete entries. (methods: GET, POST)
 
+WebSockets:
+'/send_message' : WebSocket for sending a request to the LLM to obtain a
+                  response based on user's prompt. Sends the streamed
+                  response through the websocket.
+
 Functions:
 'generation' : Makes the request to AzureOpenAI API given an input string
                `prompt` and a list of `relevant_documents`. The response is
-               a stream, so the function is a Generator that yields chunks
-               of the response as they come.
+               a stream, so the function is asynchronous, sending the chunks
+               of the response through the `websocket` as they come.
 'retrieval' : Retrieves and returns relevant documents to the input string
               argument `prompt`.
 """
 import os
 import time
-import urllib.parse
 import uuid
-from typing import Generator, List, Optional
+from typing import List
 
 import uvicorn
 import yaml
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Request, Response, WebSocket
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openai import AzureOpenAI
@@ -100,17 +101,18 @@ def retrieval(prompt: str) -> List[str]:
     return relevant_documents
 
 
-def generation(
+async def generation(
+    websocket: WebSocket,
     prompt: str,
-    relevant_documents: Optional[List[str]] = None
-) -> Generator[bytes, None, str]:
-    """Yields chunks of AzureOpenAI API's streamed response.
+    relevant_documents: List[str] | None = None
+) -> None:
+    """Sends chunks of AzureOpenAI API's streamed response via a `websocket`.
 
-    This generator function takes as input a user `prompt` and the retrieved
+    This asynchronous function takes as input a user `prompt` and the retrieved
     `relevant_documents`. It makes a request to AzureOpenAI's chat completion
     API using formatting and RAG-specific instructions for the generation
-    process, the relevant docuements, and the user prompt. It yields the chunks
-    of the API's response as they come.
+    process, the relevant docuements, and the user prompt. It sends the chunks
+    of the API's response to the `websocket` as they come.
 
     If the `relevant_documents` argument is None, the user has disabled the
     RAG functionality, so a generic request will be made to AzureOpenAI's
@@ -118,15 +120,10 @@ def generation(
     isntruction.
 
     Args:
+    - websocket (WebSocket): Established WebSocket for messages.
     - prompt (str): User input/prompt.
     - relevant_documents (List | None): A list of relevant documents to
                                         the input prompt, or None.
-
-    Yields:
-        Chunks of the response in bytes (utf-8 encoded).
-
-    Returns:
-        The generated response as a string.
     """
     # Formatting instruction
     instruction = ("You are a multilingual virtual assistant. " +
@@ -162,18 +159,23 @@ def generation(
         temperature=0.7  # Makes the model more focused and deterministic
     )
 
+    await websocket.send_text("[MESSAGE STARTS HERE]")
+
     response = []
     for chunk in chat_completion:
         if len(chunk.choices) > 0:
             msg = chunk.choices[0].delta.content
             msg = "" if msg is None else msg
             response.append(msg)
-            yield msg.encode('utf-8')
+
+            await websocket.send_text(msg)
 
     response = "".join(response)
     messages.append(('bot', response))
 
-    return response
+    await websocket.send_text("[MESSAGE ENDS HERE]")
+
+    await websocket.close(reason="End of Message")
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -182,25 +184,25 @@ def home(request: Request):
                                       context={"request": request})
 
 
-@app.post("/send_message")
-async def send_message(request: Request) -> Response:
-    form_data = await request.form()
+@app.websocket("/send_message")
+async def send_message(websocket: WebSocket) -> None:
+    await websocket.accept()
 
-    user_input = urllib.parse.unquote(form_data.get('user-input'))
-    rag_enabled = form_data.get('rag-enabled')
+    args = await websocket.receive_json()
+
+    user_input = args['prompt']
+    rag_enabled = args['ragEnabled']
 
     messages.append(('user', user_input))
 
     try:
         relevant_documents = retrieval(
-            user_input) if rag_enabled == "true" else None
-        response = generation(user_input, relevant_documents)
+            user_input) if rag_enabled else None
 
-        return StreamingResponse(
-            content=response, media_type="text/plain",
-            status_code=200, background=None)
+        await generation(websocket, user_input, relevant_documents)
+
     except Exception:
-        return Response(status_code=500)
+        await websocket.close(code=1011)
 
 
 @app.get("/upload", response_class=HTMLResponse)

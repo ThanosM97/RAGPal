@@ -35,56 +35,46 @@ function postMessage() {
         $('#user-input').val(''); // Clear input field
         $('#user-input').css('height', ''); // Reset height to default
         $('#user-input').prop('disabled', true); // Disable input field
-        $('#chat-messages').append('<div class="message bot-message">...<span class="from-label">RAGPal</span></div>'); // Add bot message placeholder
+        $('#chat-messages').append('<div class="message bot-message">...<span class="from-label">RAGPal</span></div>'); // Add bot message placeholder    
 
-        fetch('/send_message', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'user-input=' + encodeURIComponent(userInput) + "&rag-enabled=" + ragEnabled //for special characters in user's input,
-        })
-            .then(response => {
-                const reader = response.body.getReader();
-                let decoder = new TextDecoder();
+        var socket = new WebSocket("ws://localhost:5000/send_message") // Establish a websocket connection
 
+        socket.onopen = function () {
+            var args = JSON.stringify({ prompt: userInput, ragEnabled: ragEnabled })
+            socket.send(args)
+        };
+
+
+        socket.onmessage = function (event) {
+            if (event.data === "[MESSAGE STARTS HERE]") {
                 $('#chat-messages').find('div:last').empty(); // Remove the ... placeholder
+            } else if (event.data === "[MESSAGE ENDS HERE]") {
+                var markdownText = $('#chat-messages').find('div:last').html() // Get the markdown text
 
-                // Read chunks from the response stream
-                reader.read().then(function processResult(result) {
-                    var responseChunk = decoder.decode(result.value || new Uint8Array, { stream: true });
+                // Convert Markdown to HTML
+                var converter = new showdown.Converter();
+                var htmlContent = converter.makeHtml(markdownText);
 
-                    // Append response chunk to the chat div
-                    $('#chat-messages').find('div:last').append(responseChunk)
+                // Append the HTML converted context
+                $('#chat-messages').find('div:last').html(htmlContent)
+                $('#chat-messages').find('div:last').append('<span class="from-label">RAGPal</span>')
 
-                    if (result.done) { //Last chunk has arrived, add the span
-                        var markdownText = $('#chat-messages').find('div:last').html() // Get the markdown text
+                // Enable input field
+                $('#user-input').prop('disabled', false);
 
-                        // Convert Markdown to HTML
-                        var converter = new showdown.Converter();
-                        var htmlContent = converter.makeHtml(markdownText);
+                // Scroll to the last message
+                $('html, body').animate({ scrollTop: $(document).height() }, 'slow');
+            } else {
+                // Append response chunk to the chat div
+                $('#chat-messages').find('div:last').append(event.data)
+            }
+        }
 
-                        // Append the HTML converted context
-                        $('#chat-messages').find('div:last').html(htmlContent)
-                        $('#chat-messages').find('div:last').append('<span class="from-label">RAGPal</span>')
-
-                        // Enable input field
-                        $('#user-input').prop('disabled', false);
-
-                        // Scroll to the last message
-                        $('html, body').animate({ scrollTop: $(document).height() }, 'slow');
-
-                        return;
-                    }
-
-                    // Read the next chunk
-                    reader.read().then(processResult);
-                });
-            })
-            .catch(error => {
-                // Handle error
-                console.error('Error:', error);
-            });
+        socket.onclose = function (event) {
+            if (event.code !== 1000) {
+                console.log("WebSocket connection closed:", event);
+            }
+        };
     }
 }
 
