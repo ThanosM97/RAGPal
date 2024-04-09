@@ -9,7 +9,7 @@ The Retrieval Augmented Generation (RAG) approach combines the power of document
 ## Implementation
 ![RAGPal architecture](https://github.com/ThanosM97/RAGPal/assets/41332813/c9773a55-3105-45b7-8c6e-dc1e352d0be4)
 
-RAGPal is implemented as a web application with a front-end interface for user interaction and a Flask-based back-end for handling requests and business logic. The system utilizes Azure OpenAI API resources for chat completion and embedding generation, and the Qdrant vector database to serve as the knowledge base for storing and retrieving documents. 
+RAGPal is implemented as a web application with a front-end interface for user interaction and a FastAPI-based back-end for handling requests and business logic. The system utilizes Azure OpenAI API resources for chat completion and embedding generation, and the Qdrant vector database to serve as the knowledge base for storing and retrieving documents. 
 
 ### Endpoints
 * `/` : Endpoint to get home/index page (method: GET).
@@ -19,7 +19,7 @@ RAGPal is implemented as a web application with a front-end interface for user i
 
 ### Technologies Used
 * **Front-end**: HTML is used to define the structure of the application's content, CSS to determine style and layout, and JavaScript enables the Single-Page Application (SPA) functionallity of the web application.
-* **Back-end**: Flask API handles the back-end RAG logic, including processing user queries, interacting with Azure OpenAI APIs, and querying the Qdrant vector database.
+* **Back-end**: FastAPI handles the back-end RAG logic, including processing user queries, interacting with Azure OpenAI APIs, and querying the Qdrant vector database.
 * **Azure OpenAI APIs**: The chat-completion model is utilized for generating text responses, while the embedding-ada model produces embeddings for input queries (i.e., user messages) and documents in the database.
 * **Qdrant Vector Database**: Used as an in-memory knowledge base, storing documents and facilitating vector similarity search for retrieving query-relevant information.
 
