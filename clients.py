@@ -1,3 +1,12 @@
+"""This module implements clients for RAG and Qdrant operations.
+
+- VectorDatabaseClient: It is a wrapper class for Qdrant operations. It
+    implements search, scroll, add, and delete methods.
+- RAGClient: A class for the functionality of the RAG pattern. It implements
+    the create_embedding and generate_completion methods utilizing the
+    AzureOpenAI client, and the retrieve_documents method through the
+    VectorDatabaseClient.
+"""
 import os
 import uuid
 from pathlib import Path
