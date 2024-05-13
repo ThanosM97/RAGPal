@@ -14,9 +14,10 @@ WebSockets:
 
 Functions:
 'generation' : Makes the request to AzureOpenAI API given an input string
-               `prompt` and a list of `relevant_documents`. The response is
-               a stream, so the function is asynchronous, sending the chunks
-               of the response through the `websocket` as they come.
+               `prompt`, the conversation history, and a list of 
+               `relevant_documents`. The response is a stream, so the function
+               is asynchronous, sending the chunks of the response through the
+               `websocket` as they arrive.
 'retrieval' : Retrieves and returns relevant documents to the input string
               argument `prompt`.
 """
@@ -66,9 +67,6 @@ qdrant.recreate_collection(
     ),
 )
 
-# Global variables
-messages = []
-
 
 def retrieval(prompt: str) -> List[str]:
     """Returns relevant documents to `prompt`.
@@ -104,24 +102,32 @@ def retrieval(prompt: str) -> List[str]:
 async def generation(
     websocket: WebSocket,
     prompt: str,
+    history: list[dict],
     relevant_documents: List[str] | None = None
 ) -> None:
     """Sends chunks of AzureOpenAI API's streamed response via a `websocket`.
 
-    This asynchronous function takes as input a user `prompt` and the retrieved
-    `relevant_documents`. It makes a request to AzureOpenAI's chat completion
-    API using formatting and RAG-specific instructions for the generation
-    process, the relevant docuements, and the user prompt. It sends the chunks
-    of the API's response to the `websocket` as they come.
+    This asynchronous function takes as input a user `prompt`, the conversation
+    history, and the retrieved `relevant_documents`. It makes a request to
+    AzureOpenAI's chat completion API using formatting and RAG-specific
+    instructions for the generation process, the relevant docuements, and the
+    user prompt. It sends the chunks of the API's response to the `websocket`
+    as they arrive.
 
     If the `relevant_documents` argument is None, the user has disabled the
     RAG functionality, so a generic request will be made to AzureOpenAI's
-    chat completion API using only the `input_prompt` and the formatting
-    isntruction.
+    chat completion API using only the `input_prompt`, the conversation hustory
+    and the formatting isntruction.
 
     Args:
     - websocket (WebSocket): Established WebSocket for messages.
     - prompt (str): User input/prompt.
+    - history (List[dict]): The conversation history containing the
+        query/response pairs in the OpenAI format:
+            [
+                {"role":"user", "content":"user_query"},
+                {"role":"assistant", "content":"assistant_response"}
+            ]
     - relevant_documents (List | None): A list of relevant documents to
                                         the input prompt, or None.
     """
@@ -130,13 +136,15 @@ async def generation(
                    "Respond using Markdown if formatting is needed. ")
 
     if relevant_documents is None:  # RAG functionality disabled
-        message_text = [
+        message_text = history.copy()
+        message_text.extend([
             {"role": "system", "content": instruction},
-            {"role": "user", "content": prompt}]
+            {"role": "user", "content": prompt}])
     else:  # with RAG
         rag_instructions = (
             "Do not justify your answers. " +
-            "Forget the information you have outside of context." +
+            "Forget the information you have outside of context and " +
+            "conversation history." +
             "If the answer to the question is not provided in the context, " +
             "say I don't know the answer to this question in the appropriate" +
             "language. Do not mention that context is provided to the user. " +
@@ -144,13 +152,14 @@ async def generation(
             "Answer the following question:")
 
         documents = "[NEW DOCUMENT]: ".join(relevant_documents)
-        message_text = [
+        message_text = history.copy()
+        message_text.extend([
             {"role": "system", "content": instruction},
             {
                 "role": "system",
                 "content": f"Relevant context: {documents}"
             },
-            {"role": "user", "content": rag_instructions + prompt}]
+            {"role": "user", "content": rag_instructions + prompt}])
 
     chat_completion = azure_client.chat.completions.create(
         messages=message_text,
@@ -159,8 +168,6 @@ async def generation(
         temperature=0.7  # Makes the model more focused and deterministic
     )
 
-    await websocket.send_text("[MESSAGE STARTS HERE]")
-
     response = []
     for chunk in chat_completion:
         if len(chunk.choices) > 0:
@@ -168,12 +175,9 @@ async def generation(
             msg = "" if msg is None else msg
             response.append(msg)
 
-            await websocket.send_text(msg)
+            await websocket.send_json({"text": msg})
 
     response = "".join(response)
-    messages.append(('bot', response))
-
-    await websocket.send_text("[MESSAGE ENDS HERE]")
 
     await websocket.close(reason="End of Message")
 
@@ -192,14 +196,13 @@ async def send_message(websocket: WebSocket) -> None:
 
     user_input = args['prompt']
     rag_enabled = args['ragEnabled']
-
-    messages.append(('user', user_input))
+    history = args['history']
 
     try:
         relevant_documents = retrieval(
             user_input) if rag_enabled else None
 
-        await generation(websocket, user_input, relevant_documents)
+        await generation(websocket, user_input, history, relevant_documents)
 
     except Exception:
         await websocket.close(code=1011)
