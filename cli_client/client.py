@@ -21,10 +21,10 @@ async def chat(
         message_history: list[dict]) -> str:
     """Communicates with RAGPal and prints the response.
 
-    This function communicates with the RAGPal's REST API asynchronously
+    This function communicates with RAGPal's REST API asynchronously
     in the case of a streaming response through a websocket, or via an HTTP
     POST request. It sends the user query along with the conversation history
-    and prints the RAGPal's response.
+    and prints RAGPal's response.
 
     Args:
         prompt (str): The user's query.
